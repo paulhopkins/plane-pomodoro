@@ -356,9 +356,12 @@ function buildings(v: View, s: AirportScene, out: Drawable[], minH: number): voi
         if (v.night > 0.3 && w > 1.5) {
           ctx.fillStyle = css(mix(hex('#ffd58a'), v.fog, fogAmount(v, b.z) * 0.6), Math.min(1, v.night));
           const step = Math.max(1.5, 9 * k);
-          for (let y = sy - h + step; y < sy - 1; y += step) {
-            for (let x = sx - w / 2 + 0.5; x < sx + w / 2 - 0.5; x += step) {
-              if (hash(Math.floor(x * 7), Math.floor(y * 3), b.seed) < 0.3) ctx.fillRect(x, y, Math.max(0.6, step * 0.4), Math.max(0.6, step * 0.4));
+          // Key each window on its grid cell, not its screen position, so the pattern holds still as the camera moves.
+          let row = 0;
+          for (let y = sy - h + step; y < sy - 1; y += step, row++) {
+            let col = 0;
+            for (let x = sx - w / 2 + 0.5; x < sx + w / 2 - 0.5; x += step, col++) {
+              if (hash(col, row, b.seed) < 0.3) ctx.fillRect(x, y, Math.max(0.6, step * 0.4), Math.max(0.6, step * 0.4));
             }
           }
         }

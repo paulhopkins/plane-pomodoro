@@ -1,5 +1,5 @@
 import { css, hex, mix, type RGB } from '../util/color';
-import { clamp, hash, smoothstep } from '../util/math';
+import { clamp, hash, lerp, smoothstep } from '../util/math';
 import { fogAmount, py, type Drawable, type View } from './view';
 import { weatherAt, type World } from './world';
 
@@ -37,8 +37,6 @@ function cloudColors(v: View): { top: RGB; bottom: RGB } {
 export function collectClouds(v: View, w: World, out: Drawable[]): void {
   const { top, bottom } = cloudColors(v);
   for (const l of cloudLayers(w)) {
-    const base = layerBase(l, w, v.camX);
-    const below = v.camH > base + l.thick;
     for (let k = 0; k < 22; k++) {
       const zRow = 250 * Math.pow(1.32, k);
       if (zRow > 90_000) break;
@@ -61,15 +59,18 @@ export function collectClouds(v: View, w: World, out: Drawable[]): void {
         const sy = py(v, y, z);
         if (sy < -v.H || sy > v.H * 2) continue;
         const fog = fogAmount(v, z) * 0.85;
+        // Blend (rather than switch) between looking up at and down on this cloud, so it never jumps in size.
+        const above = smoothstep(0, 0.03, (v.camH - (lb + thick)) / z);
+        const under = 1 - smoothstep(lb - 300, lb, v.camH);
         const seed = i * 31 + k * 7 + l.id;
         out.push({
           z,
           draw: () =>
             l.cirrus
               ? drawCirrus(v, sx, sy, width * scale, seed, mix(top, v.fog, fog))
-              : drawCumulus(v, sx, sy, width * scale, thick * scale, seed, mix(top, v.fog, fog), mix(bottom, v.fog, fog), below, (v.camH - y) / z,
-                  // From under the base, a cloud's underside must stay above the horizon.
-                  v.camH < lb ? (v.horizonY - sy) * 0.75 : Infinity),
+              : drawCumulus(v, sx, sy, width * scale, thick * scale, seed, mix(top, v.fog, fog), mix(bottom, v.fog, fog), above, (v.camH - y) / z,
+                  // From under the base, a cloud's underside must stay above the horizon; the limit relaxes near the base.
+                  under > 0 ? ((v.horizonY - sy) * 0.75) / under : Infinity),
         });
       }
     }
@@ -78,12 +79,12 @@ export function collectClouds(v: View, w: World, out: Drawable[]): void {
 
 function drawCumulus(
   v: View, x: number, y: number, w: number, h: number, seed: number,
-  top: RGB, bottom: RGB, seenFromAbove: boolean, downAngle: number, maxRy: number,
+  top: RGB, bottom: RGB, seenFromAbove: number, downAngle: number, maxRy: number,
 ): void {
   const { ctx } = v;
   const n = 4 + Math.floor(hash(seed, 1) * 4);
   // From above, clouds read as flattened tops; level or below, as puffy towers.
-  const squash = seenFromAbove ? clamp(0.32 + downAngle * 1.5, 0.32, 0.7) : 0.75;
+  const squash = lerp(0.75, clamp(0.32 + downAngle * 1.5, 0.32, 0.7), seenFromAbove);
   // The bottom puffs reach 1.25 * ry0 below the centre.
   const ry0 = Math.min(Math.max(h * 0.5, w * 0.12) * squash, Math.max(0, maxRy));
   ctx.fillStyle = css(bottom, 0.95);
